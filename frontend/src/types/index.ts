@@ -16,6 +16,9 @@ export interface Transcript {
   audio_start_time?: number; // Seconds from recording start (e.g., 125.3)
   audio_end_time?: number;   // Seconds from recording start (e.g., 128.6)
   duration?: number;          // Segment duration in seconds (e.g., 3.3)
+  // Speaker label from local diarization (e.g. "SPEAKER_00"); filled in
+  // asynchronously after save, so absent/undefined until diarization completes.
+  speaker?: string;
 }
 
 export interface TranscriptUpdate {
@@ -107,4 +110,5 @@ export interface TranscriptSegmentData {
   endTime?: number; // audio_end_time in seconds
   text: string;
   confidence?: number;
+  speaker?: string; // Speaker label from local diarization (e.g. "SPEAKER_00")
 }

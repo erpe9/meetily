@@ -82,6 +82,20 @@ impl TranscriptsRepository {
         Ok(meeting_id)
     }
 
+    /// Writes the diarized speaker label onto a single transcript row.
+    pub async fn update_speaker(
+        pool: &SqlitePool,
+        transcript_id: &str,
+        speaker: &str,
+    ) -> Result<(), SqlxError> {
+        sqlx::query("UPDATE transcripts SET speaker = ? WHERE id = ?")
+            .bind(speaker)
+            .bind(transcript_id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
     /// Searches for a query string within the transcripts.
     /// It returns a list of matching transcripts with context.
     pub async fn search_transcripts(

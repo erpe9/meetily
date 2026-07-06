@@ -137,6 +137,9 @@ pub struct MeetingTranscript {
     pub audio_end_time: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    // Speaker label from local diarization (e.g. "SPEAKER_00"); null until diarized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
 }
 
 /// Meeting metadata without transcripts (for pagination)
@@ -878,6 +881,7 @@ pub async fn api_get_meeting_transcripts<R: Runtime>(
                     audio_start_time: t.audio_start_time,
                     audio_end_time: t.audio_end_time,
                     duration: t.duration,
+                    speaker: t.speaker,
                 })
                 .collect::<Vec<_>>();
 
@@ -971,6 +975,7 @@ pub async fn api_save_transcript<R: Runtime>(
     }
 
     let pool = state.db_manager.pool();
+    let folder_path_for_diarization = folder_path.clone();
 
     // Now, call the repository with the correctly typed data.
     match TranscriptsRepository::save_transcript(
@@ -986,6 +991,20 @@ pub async fn api_save_transcript<R: Runtime>(
                 "Successfully saved transcript and created meeting with id: {}",
                 meeting_id
             );
+
+            // ponytail: fire-and-forget; diarization is best-effort enrichment
+            // and must never block or fail the save. See audio::diarization.
+            if let Some(folder) = folder_path_for_diarization {
+                let audio_path = std::path::PathBuf::from(folder).join("audio.mp4");
+                let pool = pool.clone();
+                let meeting_id = meeting_id.clone();
+                tokio::spawn(crate::audio::diarization::diarize_and_merge(
+                    pool,
+                    meeting_id,
+                    audio_path,
+                ));
+            }
+
             Ok(serde_json::json!({
                 "status": "success",
                 "message": "Transcript saved successfully",
