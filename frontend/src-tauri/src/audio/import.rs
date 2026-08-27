@@ -663,6 +663,16 @@ async fn run_import<R: Runtime>(
         warn!("Failed to write metadata.json: {}", e);
     }
 
+    // ponytail: fire-and-forget; diarization is best-effort enrichment and must
+    // never block or fail an import. Imports save via
+    // create_meeting_with_transcripts rather than api_save_transcript, so they
+    // need their own trigger. See audio::diarization.
+    tokio::spawn(super::diarization::diarize_and_merge(
+        app_state.db_manager.pool().clone(),
+        meeting_id.clone(),
+        meeting_folder.clone(),
+    ));
+
     emit_progress(&app, "complete", 100, "Import complete");
 
     Ok(ImportResult {

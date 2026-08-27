@@ -995,13 +995,12 @@ pub async fn api_save_transcript<R: Runtime>(
             // ponytail: fire-and-forget; diarization is best-effort enrichment
             // and must never block or fail the save. See audio::diarization.
             if let Some(folder) = folder_path_for_diarization {
-                let audio_path = std::path::PathBuf::from(folder).join("audio.mp4");
                 let pool = pool.clone();
                 let meeting_id = meeting_id.clone();
                 tokio::spawn(crate::audio::diarization::diarize_and_merge(
                     pool,
                     meeting_id,
-                    audio_path,
+                    std::path::PathBuf::from(folder),
                 ));
             }
 

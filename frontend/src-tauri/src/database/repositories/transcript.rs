@@ -96,6 +96,68 @@ impl TranscriptsRepository {
         Ok(())
     }
 
+    /// Replaces a meeting's transcript rows with diarized segments
+    /// (`DIARIZATION_MODE=replace`). Delete + insert run in one transaction, so
+    /// a failure mid-way leaves the original transcript intact.
+    ///
+    /// Each row is `(text, audio_start_time, audio_end_time, speaker)`.
+    pub async fn replace_transcripts(
+        pool: &SqlitePool,
+        meeting_id: &str,
+        rows: &[(String, f64, f64, String)],
+    ) -> Result<(), SqlxError> {
+        let mut conn = pool.acquire().await?;
+        let mut transaction = conn.begin().await?;
+
+        let now = Utc::now().to_rfc3339();
+
+        if let Err(e) = sqlx::query("DELETE FROM transcripts WHERE meeting_id = ?")
+            .bind(meeting_id)
+            .execute(&mut *transaction)
+            .await
+        {
+            error!("Failed to clear transcripts for {}: {}", meeting_id, e);
+            transaction.rollback().await?;
+            return Err(e);
+        }
+
+        for (text, start, end, speaker) in rows {
+            let transcript_id = format!("transcript-{}", Uuid::new_v4());
+            let result = sqlx::query(
+                "INSERT INTO transcripts (id, meeting_id, transcript, timestamp, audio_start_time, audio_end_time, duration, speaker)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            )
+            .bind(&transcript_id)
+            .bind(meeting_id)
+            .bind(text)
+            .bind(&now)
+            .bind(start)
+            .bind(end)
+            .bind(end - start)
+            .bind(speaker)
+            .execute(&mut *transaction)
+            .await;
+
+            if let Err(e) = result {
+                error!(
+                    "Failed to insert diarized transcript for meeting {}: {}",
+                    meeting_id, e
+                );
+                transaction.rollback().await?;
+                return Err(e);
+            }
+        }
+
+        transaction.commit().await?;
+
+        info!(
+            "Replaced transcript for meeting {} with {} diarized segments",
+            meeting_id,
+            rows.len()
+        );
+        Ok(())
+    }
+
     /// Searches for a query string within the transcripts.
     /// It returns a list of matching transcripts with context.
     pub async fn search_transcripts(
